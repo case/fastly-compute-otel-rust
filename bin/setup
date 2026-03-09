@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+REQUIRED_RUST_VERSION="1.82"
+WASI_TARGET="wasm32-wasip1"
+
+# Check prerequisites
+echo "Checking prerequisites..."
+
+if ! command -v rustc &>/dev/null; then
+    echo "  ✗ rustc not found"
+    read -rp "  Install Rust via rustup? [y/N] " answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        # shellcheck disable=SC1091
+        source "$HOME/.cargo/env"
+    else
+        echo "  Rust is required — install it from https://rustup.rs"
+        exit 1
+    fi
+fi
+
+rust_version=$(rustc --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+rust_minor=$(echo "$rust_version" | cut -d. -f1,2)
+if [ "$(printf '%s\n' "$REQUIRED_RUST_VERSION" "$rust_minor" | sort -V | head -n1)" != "$REQUIRED_RUST_VERSION" ]; then
+    echo "  ✗ rustc $rust_version found, but >= $REQUIRED_RUST_VERSION required"
+    exit 1
+fi
+echo "  ✓ rustc $rust_version"
+
+if ! rustup target list --installed 2>/dev/null | grep -q "$WASI_TARGET"; then
+    echo "  + installing $WASI_TARGET target..."
+    rustup target add "$WASI_TARGET"
+fi
+echo "  ✓ $WASI_TARGET target"
+
+# Install project dependencies
+echo ""
+echo "Building project..."
+cargo check --target "$WASI_TARGET" 2>&1
+echo "  ✓ cargo check passed"
+
+echo ""
+echo "Setup complete."

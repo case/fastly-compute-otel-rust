@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# Run lints first
+echo "=== Lint ==="
+./bin/lint
+
+echo ""
+echo "=== Test ==="
+
+# Native unit tests (serialization, logic — no WASI runtime needed)
+if cargo test 2>&1; then
+    echo "  ✓ cargo test"
+else
+    echo "  ✗ cargo test"
+    exit 1
+fi
+
+echo ""
+echo "All checks passed."
