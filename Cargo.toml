@@ -11,11 +11,11 @@ categories = ["development-tools::profiling", "wasm"]
 
 [features]
 default = ["trace", "logs"]
-trace = ["opentelemetry/trace", "opentelemetry_sdk/trace"]
-logs = ["opentelemetry/logs", "opentelemetry_sdk/logs"]
+trace = ["opentelemetry/trace", "opentelemetry_sdk/trace", "base64"]
+logs = ["opentelemetry/logs", "opentelemetry_sdk/logs", "base64"]
 
 [dependencies]
-base64 = "0.22"
+base64 = { version = "0.22", optional = true }
 fastly = "0.11"
 opentelemetry = { version = "0.31", default-features = false }
 opentelemetry_sdk = { version = "0.31", default-features = false }
