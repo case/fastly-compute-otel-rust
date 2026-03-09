@@ -10,10 +10,11 @@ echo "Running lints..."
 
 # Shell scripts
 if command -v shellcheck &>/dev/null; then
-    if shellcheck bin/* 2>&1; then
+    if output=$(shellcheck bin/* 2>&1); then
         echo "  ✓ shellcheck"
     else
         echo "  ✗ shellcheck"
+        echo "$output"
         failed=$((failed + 1))
     fi
 else
@@ -21,18 +22,20 @@ else
 fi
 
 # Rust format check
-if cargo fmt --check 2>&1; then
+if output=$(cargo fmt --check 2>&1); then
     echo "  ✓ cargo fmt"
 else
     echo "  ✗ cargo fmt"
+    echo "$output"
     failed=$((failed + 1))
 fi
 
 # Rust clippy (also validates Cargo.toml syntax)
-if cargo clippy --target "$WASI_TARGET" -- -D warnings 2>&1; then
+if output=$(cargo clippy --target "$WASI_TARGET" -- -D warnings 2>&1); then
     echo "  ✓ cargo clippy"
 else
     echo "  ✗ cargo clippy"
+    echo "$output"
     failed=$((failed + 1))
 fi
 
