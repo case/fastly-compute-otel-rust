@@ -8,7 +8,19 @@ failed=0
 
 echo "Running lints..."
 
-# Format check
+# Shell scripts
+if command -v shellcheck &>/dev/null; then
+    if shellcheck bin/* 2>&1; then
+        echo "  ✓ shellcheck"
+    else
+        echo "  ✗ shellcheck"
+        failed=$((failed + 1))
+    fi
+else
+    echo "  - shellcheck (skipped, not installed)"
+fi
+
+# Rust format check
 if cargo fmt --check 2>&1; then
     echo "  ✓ cargo fmt"
 else
@@ -16,7 +28,7 @@ else
     failed=$((failed + 1))
 fi
 
-# Clippy
+# Rust clippy (also validates Cargo.toml syntax)
 if cargo clippy --target "$WASI_TARGET" -- -D warnings 2>&1; then
     echo "  ✓ cargo clippy"
 else
