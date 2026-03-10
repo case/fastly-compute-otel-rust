@@ -1,0 +1,11 @@
+# Viceroy local testing configuration.
+#
+# Named log endpoints are created dynamically by Viceroy when requested
+# by name — no explicit endpoint declaration is needed here.
+#
+# Add [local_server.backends] entries here if integration tests need
+# to exercise `otel.send(req, "backend")` against a mock origin.
+
+manifest_version = 3
+
+[local_server]

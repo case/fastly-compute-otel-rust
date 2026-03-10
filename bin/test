@@ -8,10 +8,23 @@ echo "=== Lint ==="
 ./bin/lint
 
 echo ""
-echo "=== Test ==="
+echo "=== Unit Tests (native) ==="
 
 # Native unit tests (serialization, logic — no WASI runtime needed)
 cargo test
+
+echo ""
+echo "=== Integration Tests (Viceroy) ==="
+
+# Integration tests run under Viceroy via .cargo/config.toml runner.
+# Uses cargo-nextest for per-test isolation (wasm panics halt execution).
+if command -v cargo-nextest &>/dev/null; then
+    cargo nextest run --target wasm32-wasip1 --test viceroy
+else
+    echo "cargo-nextest not found — falling back to cargo test"
+    echo "(install with: cargo install cargo-nextest)"
+    cargo test --target wasm32-wasip1 --test viceroy
+fi
 
 echo ""
 echo "All checks passed."

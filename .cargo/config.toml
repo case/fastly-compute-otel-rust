@@ -1,0 +1,9 @@
+# When targeting wasm32-wasip1, use Viceroy as the test runner.
+# This enables `cargo test --target wasm32-wasip1` and
+# `cargo nextest run --target wasm32-wasip1` to exercise Fastly hostcalls.
+#
+# NOTE: We intentionally do NOT set [build] target here. Native unit tests
+# (serialization, validation logic) should continue to run with `cargo test`
+# on the host target. Only integration tests need the WASI runtime.
+[target.wasm32-wasip1]
+runner = "viceroy run -C fastly.toml -- "
