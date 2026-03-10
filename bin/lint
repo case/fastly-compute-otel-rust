@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+WASI_TARGET="wasm32-wasip1"
+failed=0
+
+echo "Running lints..."
+
+# Shell scripts
+if command -v shellcheck &>/dev/null; then
+    if output=$(shellcheck bin/* 2>&1); then
+        echo "  ✓ shellcheck"
+    else
+        echo "  ✗ shellcheck"
+        echo "$output"
+        failed=$((failed + 1))
+    fi
+else
+    echo "  - shellcheck (skipped, not installed)"
+fi
+
+# Rust format check
+if output=$(cargo fmt --check 2>&1); then
+    echo "  ✓ cargo fmt"
+else
+    echo "  ✗ cargo fmt"
+    echo "$output"
+    failed=$((failed + 1))
+fi
+
+# Rust clippy (also validates Cargo.toml syntax)
+if output=$(cargo clippy --target "$WASI_TARGET" -- -D warnings 2>&1); then
+    echo "  ✓ cargo clippy"
+else
+    echo "  ✗ cargo clippy"
+    echo "$output"
+    failed=$((failed + 1))
+fi
+
+echo ""
+if [ "$failed" -eq 0 ]; then
+    echo "All checks passed."
+else
+    echo "$failed check(s) failed."
+    exit 1
+fi
