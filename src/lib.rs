@@ -59,3 +59,44 @@ pub enum FastlyOtelError {
     #[error("configuration error: {0}")]
     Config(&'static str),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn endpoint_open_error_includes_name_in_message() {
+        let err = FastlyOtelError::EndpointOpen {
+            name: "missing-endpoint".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "endpoint not configured"),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("missing-endpoint"),
+            "error should include the endpoint name for diagnostics: {msg}"
+        );
+        assert!(
+            msg.contains("endpoint not configured"),
+            "error should include the underlying cause: {msg}"
+        );
+    }
+
+    #[test]
+    fn write_error_preserves_io_error() {
+        let err = FastlyOtelError::Write(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "connection reset",
+        ));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("connection reset"),
+            "Write error should preserve the I/O error message: {msg}"
+        );
+    }
+
+    #[test]
+    fn config_error_includes_reason() {
+        let err = FastlyOtelError::Config("service_name is required");
+        assert!(err.to_string().contains("service_name is required"));
+    }
+}

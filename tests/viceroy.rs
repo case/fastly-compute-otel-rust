@@ -438,3 +438,98 @@ fn full_lifecycle_traces_and_logs() {
     let resp = otel.finish(resp).expect("finish should succeed");
     assert_eq!(resp.get_status(), StatusCode::OK);
 }
+
+// ---------------------------------------------------------------------------
+// Graceful degradation — export errors must not crash the request
+// ---------------------------------------------------------------------------
+// NOTE: Viceroy creates log endpoints dynamically for any name, so we cannot
+// trigger FastlyOtelError::EndpointOpen here. In production Fastly, referencing
+// an endpoint name not configured in the service dashboard would fail at
+// try_from_name(). These tests verify the higher-level guarantee: telemetry
+// failures (from the OTel SDK's perspective) don't propagate to the caller.
+
+#[cfg(feature = "trace")]
+#[test]
+fn shutdown_after_export_does_not_panic() {
+    // Verify that the full create-span-shutdown cycle completes without panic,
+    // even if the exporter encountered issues internally.
+    use opentelemetry::trace::{Tracer, TracerProvider};
+
+    let otel = FastlyOtel::builder()
+        .service_name("degradation-test")
+        .trace_endpoint("otel")
+        .build()
+        .expect("build should succeed");
+
+    let tp = otel
+        .tracer_provider()
+        .expect("tracer provider should exist");
+    let tracer = tp.tracer("test-tracer");
+
+    // Create and immediately drop multiple spans — exercises the exporter
+    // under rapid sequential export.
+    for i in 0..5 {
+        let span = tracer.start(format!("span-{i}"));
+        drop(span);
+    }
+
+    // Shutdown should succeed without propagating any export errors.
+    otel.shutdown()
+        .expect("shutdown after rapid export should succeed");
+}
+
+#[cfg(all(feature = "trace", feature = "logs"))]
+#[test]
+fn finish_returns_response_even_after_double_shutdown() {
+    // Verify that calling shutdown() then finish() doesn't panic or lose
+    // the response. This covers the edge case where a user calls shutdown()
+    // explicitly on an error path, then later calls finish() in cleanup.
+    let req = fastly::Request::get("https://example.com/double-shutdown");
+
+    let otel = FastlyOtel::builder()
+        .service_name("degradation-test")
+        .endpoint("otel")
+        .build_from_request(&req)
+        .expect("build should succeed");
+
+    // First shutdown — explicit, on an "error path".
+    let _ = otel.shutdown();
+
+    // Second shutdown via finish — should still return the response.
+    let resp = fastly::Response::from_status(StatusCode::OK);
+    let resp = otel
+        .finish(resp)
+        .expect("finish after shutdown should still return response");
+    assert_eq!(resp.get_status(), StatusCode::OK);
+}
+
+#[cfg(feature = "trace")]
+#[test]
+fn send_to_nonexistent_backend_returns_error_without_panic() {
+    // When a backend fetch fails (e.g., backend not declared in fastly.toml),
+    // otel.send() should return the error cleanly — the child span should be
+    // ended with error status, and no panic should occur.
+    let req = fastly::Request::get("https://example.com/api");
+
+    let otel = FastlyOtel::builder()
+        .service_name("degradation-test")
+        .trace_endpoint("otel")
+        .build_from_request(&req)
+        .expect("build should succeed");
+
+    let backend_req = fastly::Request::get("https://nonexistent.example.com/");
+    let result = otel.send(backend_req, "nonexistent-backend");
+
+    // The send should fail (backend not configured in Viceroy), but not panic.
+    assert!(
+        result.is_err(),
+        "send to nonexistent backend should return an error"
+    );
+
+    // finish() should still work — the root span should be finalized normally.
+    let resp = fastly::Response::from_status(StatusCode::BAD_GATEWAY);
+    let resp = otel
+        .finish(resp)
+        .expect("finish should succeed even after send error");
+    assert_eq!(resp.get_status(), StatusCode::BAD_GATEWAY);
+}

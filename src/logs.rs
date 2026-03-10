@@ -43,6 +43,10 @@ impl FastlyLogExporter {
 
     /// Serialize a batch of log records to OTLP JSON and write to the log endpoint.
     fn export_sync(&self, batch: LogBatch<'_>) -> Result<(), FastlyOtelError> {
+        if batch.iter().next().is_none() {
+            return Ok(());
+        }
+
         let mut endpoint =
             fastly::log::Endpoint::try_from_name(&self.endpoint_name).map_err(|e| {
                 FastlyOtelError::EndpointOpen {
