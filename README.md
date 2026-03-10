@@ -1,6 +1,6 @@
 # fastly-compute-otel
 
-OpenTelemetry **log and trace export** for Fastly Compute (Rust), using named log providers as transport.
+OpenTelemetry **log and trace export** for Rust + [Fastly Compute](https://www.fastly.com/documentation/guides/compute/getting-started-with-compute/), using named log providers as transport.
 
 This crate adapts the upstream [`opentelemetry`](https://crates.io/crates/opentelemetry) SDK for Fastly Compute's WASI environment, where the standard `opentelemetry-otlp` exporter cannot compile (it depends on `tonic`/`reqwest` which require threads and async runtimes). Instead, this crate serializes OTLP JSON and writes it to Fastly [named log endpoints](https://docs.rs/fastly/latest/fastly/log/struct.Endpoint.html), which stream the data to [any configured logging service](https://docs.fastly.com/en/guides/about-fastlys-realtime-log-streaming-features) (HTTPS, S3, Datadog, Splunk, BigQuery, Kafka, and many others).
 
@@ -11,8 +11,8 @@ This crate adapts the upstream [`opentelemetry`](https://crates.io/crates/opente
 As of 2026-03-10:
 
 - [x] Make it - _done as of 2026-03-09_
-- [ ] Make it work
-- [ ] Make it right
+- [ ] Make it work - confirm that it works with a life Compute service
+- [ ] Make it right - e.g. versioned releases, etc.
 - [ ] Make it fast
 
 ([Via](https://wiki.c2.com/?MakeItWorkMakeItRightMakeItFast))
