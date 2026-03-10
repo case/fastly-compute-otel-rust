@@ -107,6 +107,13 @@ Both traces and logs are written to the same named log endpoint. They use differ
 
 ## Usage examples
 
+### `build_from_request` vs `build`
+
+The builder has two terminal methods:
+
+- **`build_from_request(&req)`** — creates providers *and* a root span from the incoming request (extracts `traceparent`, sets HTTP attributes). This is the recommended path when traces are enabled.
+- **`build()`** — creates providers only, no root span. Use this for logs-only setups, or when you want full manual control over span creation.
+
 ### Custom spans
 
 ```rust
