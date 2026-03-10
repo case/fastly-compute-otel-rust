@@ -18,9 +18,13 @@ mod otlp;
 
 #[cfg(feature = "logs")]
 mod logs;
+#[cfg(feature = "trace")]
+mod traces;
 
 #[cfg(feature = "logs")]
 pub use logs::FastlyLogExporter;
+#[cfg(feature = "trace")]
+pub use traces::FastlySpanExporter;
 
 /// Errors that can occur during OTel export on Fastly Compute.
 #[derive(Debug, Error)]

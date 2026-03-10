@@ -99,6 +99,115 @@ pub(crate) fn resource_to_otlp(resource: &opentelemetry_sdk::Resource) -> OtlpRe
     }
 }
 
+/// Convert `SpanKind` to the OTLP integer representation.
+///
+/// OTLP defines: 0=unspecified, 1=internal, 2=server, 3=client, 4=producer, 5=consumer.
+pub(crate) fn span_kind_to_otlp(kind: &opentelemetry::trace::SpanKind) -> u32 {
+    use opentelemetry::trace::SpanKind;
+    match kind {
+        SpanKind::Internal => 1,
+        SpanKind::Server => 2,
+        SpanKind::Client => 3,
+        SpanKind::Producer => 4,
+        SpanKind::Consumer => 5,
+    }
+}
+
+/// Convert `Status` to an OTLP `SpanStatus`.
+///
+/// OTLP defines: 0=unset, 1=ok, 2=error. Only the error variant carries a message.
+pub(crate) fn status_to_otlp(status: &opentelemetry::trace::Status) -> crate::otlp::SpanStatus {
+    use opentelemetry::trace::Status;
+    match status {
+        Status::Unset => crate::otlp::SpanStatus {
+            code: 0,
+            message: String::new(),
+        },
+        Status::Ok => crate::otlp::SpanStatus {
+            code: 1,
+            message: String::new(),
+        },
+        Status::Error { description } => crate::otlp::SpanStatus {
+            code: 2,
+            message: description.to_string(),
+        },
+    }
+}
+
+/// Convert an OTel `Event` to an OTLP `SpanEvent`.
+pub(crate) fn event_to_otlp(event: &opentelemetry::trace::Event) -> crate::otlp::SpanEvent {
+    crate::otlp::SpanEvent {
+        time_unix_nano: system_time_to_nanos(event.timestamp),
+        name: event.name.to_string(),
+        attributes: event
+            .attributes
+            .iter()
+            .map(|kv| resource_attribute_to_otlp(&kv.key, &kv.value))
+            .collect(),
+        dropped_attributes_count: event.dropped_attributes_count,
+    }
+}
+
+/// Convert a `TraceState` to an `Option<String>`, returning `None` if empty.
+fn trace_state_to_otlp(ts: &opentelemetry::trace::TraceState) -> Option<String> {
+    let s = ts.header();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// Convert an OTel `Link` to an OTLP `SpanLink`.
+pub(crate) fn link_to_otlp(link: &opentelemetry::trace::Link) -> crate::otlp::SpanLink {
+    crate::otlp::SpanLink {
+        trace_id: link.span_context.trace_id().to_string(),
+        span_id: link.span_context.span_id().to_string(),
+        attributes: link
+            .attributes
+            .iter()
+            .map(|kv| resource_attribute_to_otlp(&kv.key, &kv.value))
+            .collect(),
+        dropped_attributes_count: link.dropped_attributes_count,
+        flags: link.span_context.trace_flags().to_u8() as u32,
+        trace_state: trace_state_to_otlp(link.span_context.trace_state()),
+    }
+}
+
+/// Convert a `SpanData` to an OTLP `Span`.
+pub(crate) fn span_data_to_otlp(span: &opentelemetry_sdk::trace::SpanData) -> crate::otlp::Span {
+    use opentelemetry::trace::SpanId;
+
+    let parent_span_id = if span.parent_span_id == SpanId::INVALID {
+        None
+    } else {
+        Some(span.parent_span_id.to_string())
+    };
+
+    crate::otlp::Span {
+        trace_id: span.span_context.trace_id().to_string(),
+        span_id: span.span_context.span_id().to_string(),
+        parent_span_id,
+        name: span.name.to_string(),
+        kind: span_kind_to_otlp(&span.span_kind),
+        start_time_unix_nano: system_time_to_nanos(span.start_time),
+        end_time_unix_nano: system_time_to_nanos(span.end_time),
+        attributes: span
+            .attributes
+            .iter()
+            .map(|kv| resource_attribute_to_otlp(&kv.key, &kv.value))
+            .collect(),
+        dropped_attributes_count: span.dropped_attributes_count,
+        events: span.events.events.iter().map(event_to_otlp).collect(),
+        dropped_events_count: span.events.dropped_count,
+        links: span.links.links.iter().map(link_to_otlp).collect(),
+        dropped_links_count: span.links.dropped_count,
+        status: status_to_otlp(&span.status),
+        flags: span.span_context.trace_flags().to_u8() as u32,
+        trace_state: trace_state_to_otlp(span.span_context.trace_state()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +299,159 @@ mod tests {
             json,
             r#"{"arrayValue":{"values":[{"intValue":"1"},{"intValue":"2"},{"intValue":"3"}]}}"#
         );
+    }
+
+    #[test]
+    fn span_kind_maps_to_otlp_integers() {
+        use opentelemetry::trace::SpanKind;
+        assert_eq!(span_kind_to_otlp(&SpanKind::Internal), 1);
+        assert_eq!(span_kind_to_otlp(&SpanKind::Server), 2);
+        assert_eq!(span_kind_to_otlp(&SpanKind::Client), 3);
+        assert_eq!(span_kind_to_otlp(&SpanKind::Producer), 4);
+        assert_eq!(span_kind_to_otlp(&SpanKind::Consumer), 5);
+    }
+
+    #[test]
+    fn status_unset_serializes_with_code_zero() {
+        let s = status_to_otlp(&opentelemetry::trace::Status::Unset);
+        let json = serde_json::to_string(&s).unwrap();
+        assert_eq!(json, r#"{"code":0}"#);
+    }
+
+    #[test]
+    fn status_ok_serializes_with_code_one() {
+        let s = status_to_otlp(&opentelemetry::trace::Status::Ok);
+        let json = serde_json::to_string(&s).unwrap();
+        assert_eq!(json, r#"{"code":1}"#);
+    }
+
+    #[test]
+    fn status_error_includes_message() {
+        let s = status_to_otlp(&opentelemetry::trace::Status::Error {
+            description: "something broke".into(),
+        });
+        let json = serde_json::to_string(&s).unwrap();
+        assert_eq!(json, r#"{"code":2,"message":"something broke"}"#);
+    }
+
+    /// Build a minimal `SpanData` for testing. Callers can override fields after creation.
+    fn make_test_span(
+        parent_span_id: opentelemetry::trace::SpanId,
+    ) -> opentelemetry_sdk::trace::SpanData {
+        use opentelemetry::trace::{SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId};
+        use opentelemetry_sdk::trace::{SpanData, SpanEvents, SpanLinks};
+        use std::borrow::Cow;
+
+        SpanData {
+            span_context: SpanContext::new(
+                TraceId::from_hex("0af7651916cd43dd8448eb211c80319c").unwrap(),
+                SpanId::from_hex("b7ad6b7169203331").unwrap(),
+                TraceFlags::SAMPLED,
+                false,
+                Default::default(),
+            ),
+            parent_span_id,
+            parent_span_is_remote: false,
+            span_kind: SpanKind::Server,
+            name: Cow::Borrowed("GET /api/users"),
+            start_time: SystemTime::UNIX_EPOCH + Duration::new(1_700_000_000, 0),
+            end_time: SystemTime::UNIX_EPOCH + Duration::new(1_700_000_000, 50_000_000),
+            attributes: vec![opentelemetry::KeyValue::new("http.method", "GET")],
+            dropped_attributes_count: 0,
+            events: SpanEvents::default(),
+            links: SpanLinks::default(),
+            status: Status::Ok,
+            instrumentation_scope: opentelemetry::InstrumentationScope::builder("test-tracer")
+                .with_version("0.1.0")
+                .build(),
+        }
+    }
+
+    #[test]
+    fn span_data_to_otlp_produces_valid_structure() {
+        use opentelemetry::trace::SpanId;
+
+        let span = make_test_span(SpanId::from_hex("00f067aa0ba902b7").unwrap());
+
+        let otlp_span = span_data_to_otlp(&span);
+        let json: serde_json::Value = serde_json::to_value(&otlp_span).unwrap();
+
+        assert_eq!(json["traceId"], "0af7651916cd43dd8448eb211c80319c");
+        assert_eq!(json["spanId"], "b7ad6b7169203331");
+        assert_eq!(json["parentSpanId"], "00f067aa0ba902b7");
+        assert_eq!(json["name"], "GET /api/users");
+        assert_eq!(json["kind"], 2); // SERVER
+        assert_eq!(json["startTimeUnixNano"], "1700000000000000000");
+        assert_eq!(json["endTimeUnixNano"], "1700000000050000000");
+        assert_eq!(json["status"]["code"], 1); // OK
+        assert_eq!(json["attributes"][0]["key"], "http.method");
+        assert_eq!(json["attributes"][0]["value"]["stringValue"], "GET");
+        // Dropped counts and empty collections should be omitted
+        assert!(json.get("droppedAttributesCount").is_none());
+        assert!(json.get("events").is_none());
+        assert!(json.get("links").is_none());
+        // traceState should be omitted when empty
+        assert!(json.get("traceState").is_none());
+    }
+
+    #[test]
+    fn root_span_omits_parent_span_id() {
+        use opentelemetry::trace::SpanId;
+
+        let span = make_test_span(SpanId::INVALID);
+
+        let otlp_span = span_data_to_otlp(&span);
+        let json: serde_json::Value = serde_json::to_value(&otlp_span).unwrap();
+
+        assert!(json.get("parentSpanId").is_none());
+    }
+
+    #[test]
+    fn span_event_serializes_correctly() {
+        let event = opentelemetry::trace::Event::new(
+            "exception",
+            SystemTime::UNIX_EPOCH + Duration::new(1_700_000_000, 100_000),
+            vec![opentelemetry::KeyValue::new(
+                "exception.message",
+                "not found",
+            )],
+            0,
+        );
+
+        let otlp_event = event_to_otlp(&event);
+        let json: serde_json::Value = serde_json::to_value(&otlp_event).unwrap();
+
+        assert_eq!(json["name"], "exception");
+        assert_eq!(json["timeUnixNano"], "1700000000000100000");
+        assert_eq!(json["attributes"][0]["key"], "exception.message");
+    }
+
+    #[test]
+    fn span_link_serializes_correctly() {
+        use opentelemetry::trace::{Link, SpanContext, SpanId, TraceFlags, TraceId};
+
+        let linked_context = SpanContext::new(
+            TraceId::from_hex("aaaabbbbccccdddd1111222233334444").unwrap(),
+            SpanId::from_hex("eeee5555ffff6666").unwrap(),
+            TraceFlags::SAMPLED,
+            false,
+            Default::default(),
+        );
+
+        let link = Link::new(
+            linked_context,
+            vec![opentelemetry::KeyValue::new("link.reason", "retry")],
+            0,
+        );
+
+        let otlp_link = link_to_otlp(&link);
+        let json: serde_json::Value = serde_json::to_value(&otlp_link).unwrap();
+
+        assert_eq!(json["traceId"], "aaaabbbbccccdddd1111222233334444");
+        assert_eq!(json["spanId"], "eeee5555ffff6666");
+        assert_eq!(json["attributes"][0]["key"], "link.reason");
+        assert_eq!(json["attributes"][0]["value"]["stringValue"], "retry");
+        // traceState should be omitted when empty
+        assert!(json.get("traceState").is_none());
     }
 }

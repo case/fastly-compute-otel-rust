@@ -126,3 +126,145 @@ pub(crate) struct OtlpArrayValue {
 pub(crate) struct OtlpKeyValueList {
     pub values: Vec<OtlpKeyValue>,
 }
+
+// ── Trace hierarchy ──────────────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExportTraceServiceRequest {
+    pub resource_spans: Vec<ResourceSpans>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ResourceSpans {
+    pub resource: Resource,
+    pub scope_spans: Vec<ScopeSpans>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ScopeSpans {
+    pub scope: Scope,
+    pub spans: Vec<Span>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Span {
+    /// Hex-encoded 16-byte trace ID.
+    pub trace_id: String,
+
+    /// Hex-encoded 8-byte span ID.
+    pub span_id: String,
+
+    /// Hex-encoded 8-byte parent span ID (omitted for root spans).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_span_id: Option<String>,
+
+    /// Human-readable span name.
+    pub name: String,
+
+    /// Span kind (OTLP integer: 0=unspecified, 1=internal, 2=server, 3=client, 4=producer, 5=consumer).
+    pub kind: u32,
+
+    /// Start time as nanoseconds since epoch (decimal string).
+    pub start_time_unix_nano: String,
+
+    /// End time as nanoseconds since epoch (decimal string).
+    pub end_time_unix_nano: String,
+
+    /// Span attributes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<OtlpKeyValue>,
+
+    /// Number of attributes that were dropped due to limits.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub dropped_attributes_count: u32,
+
+    /// Timed events within the span.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<SpanEvent>,
+
+    /// Number of events that were dropped due to limits.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub dropped_events_count: u32,
+
+    /// Links to other spans.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<SpanLink>,
+
+    /// Number of links that were dropped due to limits.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub dropped_links_count: u32,
+
+    /// Span status.
+    pub status: SpanStatus,
+
+    /// W3C trace flags (lower 8 bits).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub flags: u32,
+
+    /// W3C tracestate header, serialized as a string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_state: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpanEvent {
+    /// Event timestamp as nanoseconds since epoch (decimal string).
+    pub time_unix_nano: String,
+
+    /// Event name.
+    pub name: String,
+
+    /// Event attributes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<OtlpKeyValue>,
+
+    /// Number of attributes that were dropped.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub dropped_attributes_count: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpanLink {
+    /// Hex-encoded trace ID of the linked span.
+    pub trace_id: String,
+
+    /// Hex-encoded span ID of the linked span.
+    pub span_id: String,
+
+    /// Link attributes.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<OtlpKeyValue>,
+
+    /// Number of attributes that were dropped.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub dropped_attributes_count: u32,
+
+    /// Trace flags of the linked span.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub flags: u32,
+
+    /// W3C tracestate header of the linked span.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_state: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpanStatus {
+    /// Status code (0=unset, 1=ok, 2=error).
+    pub code: u32,
+
+    /// Optional status message (only meaningful with error status).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub message: String,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
