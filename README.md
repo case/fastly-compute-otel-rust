@@ -154,6 +154,18 @@ let otel = FastlyOtel::builder()
     .build_from_request(&req)?;
 ```
 
+### Logs only (no traces)
+
+```rust
+let otel = FastlyOtel::builder()
+    .service_name("my-edge-app")
+    .log_endpoint("otel-endpoint")
+    .build()?;
+
+// Use the standard OTel logging API directly.
+// Call otel.shutdown() when done to flush pending records.
+```
+
 ### Manual traceparent propagation
 
 If you need more control than `otel.send()` provides:
