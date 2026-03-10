@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+      semver-major-days: 30
+    ignore:
+      # Fastly SDK — must match the version supported by Fastly's toolchain
+      - dependency-name: fastly
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # OpenTelemetry crates — must stay in sync with each other and with
+      # the version that the Fastly SDK's dependency tree supports
+      - dependency-name: opentelemetry
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: opentelemetry_sdk
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
