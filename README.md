@@ -6,6 +6,17 @@ This crate adapts the upstream [`opentelemetry`](https://crates.io/crates/opente
 
 > **Not affiliated with Fastly.** This is an independent open-source project.
 
+## Todo list
+
+As of 2026-03-10:
+
+- [x] Make it - _done as of 2026-03-09_
+- [ ] Make it work
+- [ ] Make it right
+- [ ] Make it fast
+
+([Via](https://wiki.c2.com/?MakeItWorkMakeItRightMakeItFast))
+
 ## Quick start
 
 Add the dependency to your `Cargo.toml`:
