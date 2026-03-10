@@ -34,15 +34,18 @@ jobs:
         run: cargo clippy --target "$WASI_TARGET" -- -D warnings
 
   test:
-    name: Test
+    name: Test (${{ matrix.name }})
     needs: lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        features:
-          - ""
-          - "--no-default-features --features trace"
-          - "--no-default-features --features logs"
+        include:
+          - name: default
+            features: ""
+          - name: trace-only
+            features: "--no-default-features --features trace"
+          - name: logs-only
+            features: "--no-default-features --features logs"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
