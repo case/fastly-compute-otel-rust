@@ -16,11 +16,15 @@ mod convert;
 #[cfg(any(feature = "logs", feature = "trace"))]
 mod otlp;
 
+#[cfg(any(feature = "logs", feature = "trace"))]
+mod init;
 #[cfg(feature = "logs")]
 mod logs;
 #[cfg(feature = "trace")]
 mod traces;
 
+#[cfg(any(feature = "logs", feature = "trace"))]
+pub use init::{FastlyOtel, FastlyOtelBuilder};
 #[cfg(feature = "logs")]
 pub use logs::FastlyLogExporter;
 #[cfg(feature = "trace")]
@@ -40,4 +44,7 @@ pub enum FastlyOtelError {
 
     #[error("failed to write to log endpoint: {0}")]
     Write(std::io::Error),
+
+    #[error("configuration error: {0}")]
+    Config(&'static str),
 }
