@@ -1,12 +1,15 @@
 //! Conversions from `opentelemetry` SDK types to OTLP JSON serialization types.
 
-use crate::otlp::{
-    OtlpAnyValue, OtlpArrayValue, OtlpKeyValue, OtlpKeyValueList, Resource as OtlpResource,
-};
-use base64::{engine::general_purpose::STANDARD, Engine};
-use opentelemetry::logs::AnyValue;
+use crate::otlp::{OtlpAnyValue, OtlpArrayValue, OtlpKeyValue, Resource as OtlpResource};
 use opentelemetry::{Key, Value};
 use std::time::SystemTime;
+
+#[cfg(feature = "logs")]
+use crate::otlp::OtlpKeyValueList;
+#[cfg(feature = "logs")]
+use base64::{engine::general_purpose::STANDARD, Engine};
+#[cfg(feature = "logs")]
+use opentelemetry::logs::AnyValue;
 
 /// Convert a `SystemTime` to nanoseconds-since-epoch as a decimal string.
 pub(crate) fn system_time_to_nanos(t: SystemTime) -> String {
@@ -16,6 +19,7 @@ pub(crate) fn system_time_to_nanos(t: SystemTime) -> String {
 }
 
 /// Convert an OTel log `AnyValue` to an OTLP JSON `AnyValue`.
+#[cfg(feature = "logs")]
 pub(crate) fn any_value_to_otlp(v: &AnyValue) -> OtlpAnyValue {
     match v {
         AnyValue::Int(i) => OtlpAnyValue::IntValue(i.to_string()),
@@ -74,6 +78,7 @@ pub(crate) fn value_to_otlp(v: &Value) -> OtlpAnyValue {
 }
 
 /// Convert an OTel log attribute `(Key, AnyValue)` pair to an OTLP KeyValue.
+#[cfg(feature = "logs")]
 pub(crate) fn log_attribute_to_otlp(key: &Key, value: &AnyValue) -> OtlpKeyValue {
     OtlpKeyValue {
         key: key.as_str().to_string(),
@@ -89,6 +94,19 @@ pub(crate) fn resource_attribute_to_otlp(key: &Key, value: &Value) -> OtlpKeyVal
     }
 }
 
+/// Convert an `InstrumentationScope` to an OTLP `Scope`.
+pub(crate) fn scope_to_otlp(scope: &opentelemetry::InstrumentationScope) -> crate::otlp::Scope {
+    crate::otlp::Scope {
+        name: scope.name().to_string(),
+        version: scope.version().map(String::from),
+        schema_url: scope.schema_url().map(String::from),
+        attributes: scope
+            .attributes()
+            .map(|kv| resource_attribute_to_otlp(&kv.key, &kv.value))
+            .collect(),
+    }
+}
+
 /// Convert an `opentelemetry_sdk::Resource` to an OTLP Resource.
 pub(crate) fn resource_to_otlp(resource: &opentelemetry_sdk::Resource) -> OtlpResource {
     OtlpResource {
@@ -99,9 +117,12 @@ pub(crate) fn resource_to_otlp(resource: &opentelemetry_sdk::Resource) -> OtlpRe
     }
 }
 
+// ── Trace-only conversions ──────────────────────────────────────────
+
 /// Convert `SpanKind` to the OTLP integer representation.
 ///
 /// OTLP defines: 0=unspecified, 1=internal, 2=server, 3=client, 4=producer, 5=consumer.
+#[cfg(feature = "trace")]
 pub(crate) fn span_kind_to_otlp(kind: &opentelemetry::trace::SpanKind) -> u32 {
     use opentelemetry::trace::SpanKind;
     match kind {
@@ -116,6 +137,7 @@ pub(crate) fn span_kind_to_otlp(kind: &opentelemetry::trace::SpanKind) -> u32 {
 /// Convert `Status` to an OTLP `SpanStatus`.
 ///
 /// OTLP defines: 0=unset, 1=ok, 2=error. Only the error variant carries a message.
+#[cfg(feature = "trace")]
 pub(crate) fn status_to_otlp(status: &opentelemetry::trace::Status) -> crate::otlp::SpanStatus {
     use opentelemetry::trace::Status;
     match status {
@@ -135,6 +157,7 @@ pub(crate) fn status_to_otlp(status: &opentelemetry::trace::Status) -> crate::ot
 }
 
 /// Convert an OTel `Event` to an OTLP `SpanEvent`.
+#[cfg(feature = "trace")]
 pub(crate) fn event_to_otlp(event: &opentelemetry::trace::Event) -> crate::otlp::SpanEvent {
     crate::otlp::SpanEvent {
         time_unix_nano: system_time_to_nanos(event.timestamp),
@@ -149,6 +172,7 @@ pub(crate) fn event_to_otlp(event: &opentelemetry::trace::Event) -> crate::otlp:
 }
 
 /// Convert a `TraceState` to an `Option<String>`, returning `None` if empty.
+#[cfg(feature = "trace")]
 fn trace_state_to_otlp(ts: &opentelemetry::trace::TraceState) -> Option<String> {
     let s = ts.header();
     if s.is_empty() {
@@ -159,6 +183,7 @@ fn trace_state_to_otlp(ts: &opentelemetry::trace::TraceState) -> Option<String> 
 }
 
 /// Convert an OTel `Link` to an OTLP `SpanLink`.
+#[cfg(feature = "trace")]
 pub(crate) fn link_to_otlp(link: &opentelemetry::trace::Link) -> crate::otlp::SpanLink {
     crate::otlp::SpanLink {
         trace_id: link.span_context.trace_id().to_string(),
@@ -175,6 +200,7 @@ pub(crate) fn link_to_otlp(link: &opentelemetry::trace::Link) -> crate::otlp::Sp
 }
 
 /// Convert a `SpanData` to an OTLP `Span`.
+#[cfg(feature = "trace")]
 pub(crate) fn span_data_to_otlp(span: &opentelemetry_sdk::trace::SpanData) -> crate::otlp::Span {
     use opentelemetry::trace::SpanId;
 
@@ -219,6 +245,7 @@ mod tests {
         assert_eq!(system_time_to_nanos(t), "1696435200123456789");
     }
 
+    #[cfg(feature = "logs")]
     #[test]
     fn int64_serialized_as_decimal_string_per_otlp_spec() {
         // OTLP JSON encodes int64 as a string, not a number — easy to get wrong
@@ -227,6 +254,7 @@ mod tests {
         assert_eq!(json, r#"{"intValue":"42"}"#);
     }
 
+    #[cfg(feature = "logs")]
     #[test]
     fn bytes_serialized_as_base64() {
         // bytesValue uses standard base64 per protobuf JSON mapping.
@@ -236,6 +264,7 @@ mod tests {
         assert_eq!(json, r#"{"bytesValue":"3q2+7w=="}"#);
     }
 
+    #[cfg(feature = "logs")]
     #[test]
     fn nested_list_preserves_structure() {
         let v = AnyValue::ListAny(Box::new(vec![AnyValue::Int(1), AnyValue::Int(2)]));
@@ -301,6 +330,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn span_kind_maps_to_otlp_integers() {
         use opentelemetry::trace::SpanKind;
@@ -311,6 +341,7 @@ mod tests {
         assert_eq!(span_kind_to_otlp(&SpanKind::Consumer), 5);
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn status_unset_serializes_with_code_zero() {
         let s = status_to_otlp(&opentelemetry::trace::Status::Unset);
@@ -318,6 +349,7 @@ mod tests {
         assert_eq!(json, r#"{"code":0}"#);
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn status_ok_serializes_with_code_one() {
         let s = status_to_otlp(&opentelemetry::trace::Status::Ok);
@@ -325,6 +357,7 @@ mod tests {
         assert_eq!(json, r#"{"code":1}"#);
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn status_error_includes_message() {
         let s = status_to_otlp(&opentelemetry::trace::Status::Error {
@@ -335,6 +368,7 @@ mod tests {
     }
 
     /// Build a minimal `SpanData` for testing. Callers can override fields after creation.
+    #[cfg(feature = "trace")]
     fn make_test_span(
         parent_span_id: opentelemetry::trace::SpanId,
     ) -> opentelemetry_sdk::trace::SpanData {
@@ -367,6 +401,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn span_data_to_otlp_produces_valid_structure() {
         use opentelemetry::trace::SpanId;
@@ -394,6 +429,7 @@ mod tests {
         assert!(json.get("traceState").is_none());
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn root_span_omits_parent_span_id() {
         use opentelemetry::trace::SpanId;
@@ -406,6 +442,7 @@ mod tests {
         assert!(json.get("parentSpanId").is_none());
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn span_event_serializes_correctly() {
         let event = opentelemetry::trace::Event::new(
@@ -426,6 +463,7 @@ mod tests {
         assert_eq!(json["attributes"][0]["key"], "exception.message");
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn span_link_serializes_correctly() {
         use opentelemetry::trace::{Link, SpanContext, SpanId, TraceFlags, TraceId};

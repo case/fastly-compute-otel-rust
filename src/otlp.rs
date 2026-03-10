@@ -7,16 +7,16 @@
 
 use serde::Serialize;
 
-// ── Top-level request types ─────────────────────────────────────────
+// ── Log request types ───────────────────────────────────────────────
 
+#[cfg(feature = "logs")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExportLogsServiceRequest {
     pub resource_logs: Vec<ResourceLogs>,
 }
 
-// ── Log hierarchy ───────────────────────────────────────────────────
-
+#[cfg(feature = "logs")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ResourceLogs {
@@ -24,6 +24,7 @@ pub(crate) struct ResourceLogs {
     pub scope_logs: Vec<ScopeLogs>,
 }
 
+#[cfg(feature = "logs")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ScopeLogs {
@@ -31,6 +32,7 @@ pub(crate) struct ScopeLogs {
     pub log_records: Vec<LogRecord>,
 }
 
+#[cfg(feature = "logs")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LogRecord {
@@ -129,12 +131,14 @@ pub(crate) struct OtlpKeyValueList {
 
 // ── Trace hierarchy ──────────────────────────────────────────────────
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExportTraceServiceRequest {
     pub resource_spans: Vec<ResourceSpans>,
 }
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ResourceSpans {
@@ -142,6 +146,7 @@ pub(crate) struct ResourceSpans {
     pub scope_spans: Vec<ScopeSpans>,
 }
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ScopeSpans {
@@ -149,6 +154,7 @@ pub(crate) struct ScopeSpans {
     pub spans: Vec<Span>,
 }
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Span {
@@ -210,6 +216,7 @@ pub(crate) struct Span {
     pub trace_state: Option<String>,
 }
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpanEvent {
@@ -228,6 +235,7 @@ pub(crate) struct SpanEvent {
     pub dropped_attributes_count: u32,
 }
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpanLink {
@@ -254,6 +262,7 @@ pub(crate) struct SpanLink {
     pub trace_state: Option<String>,
 }
 
+#[cfg(feature = "trace")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpanStatus {
@@ -265,6 +274,7 @@ pub(crate) struct SpanStatus {
     pub message: String,
 }
 
+#[cfg(feature = "trace")]
 fn is_zero(v: &u32) -> bool {
     *v == 0
 }

@@ -86,15 +86,7 @@ impl FastlyLogExporter {
         let scope_logs: Vec<otlp::ScopeLogs> = scope_map
             .into_iter()
             .map(|(scope, log_records)| otlp::ScopeLogs {
-                scope: otlp::Scope {
-                    name: scope.name().to_string(),
-                    version: scope.version().map(String::from),
-                    schema_url: scope.schema_url().map(String::from),
-                    attributes: scope
-                        .attributes()
-                        .map(|kv| convert::resource_attribute_to_otlp(&kv.key, &kv.value))
-                        .collect(),
-                },
+                scope: convert::scope_to_otlp(scope),
                 log_records,
             })
             .collect();

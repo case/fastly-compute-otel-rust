@@ -11,12 +11,7 @@ echo ""
 echo "=== Test ==="
 
 # Native unit tests (serialization, logic — no WASI runtime needed)
-if cargo test 2>&1; then
-    echo "  ✓ cargo test"
-else
-    echo "  ✗ cargo test"
-    exit 1
-fi
+cargo test
 
 echo ""
 echo "All checks passed."

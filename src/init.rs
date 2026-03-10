@@ -21,6 +21,7 @@ pub struct FastlyOtel {
 
 impl FastlyOtel {
     /// Create a new builder for configuring OTel on Fastly Compute.
+    #[must_use]
     pub fn builder() -> FastlyOtelBuilder {
         FastlyOtelBuilder {
             service_name: None,
@@ -50,14 +51,28 @@ impl FastlyOtel {
     /// Call this at the end of the request handler, before returning the response.
     /// Fastly Compute is request-scoped — there is no background processing after
     /// the response is sent.
-    pub fn shutdown(&self) {
+    ///
+    /// Attempts to shut down all providers even if one fails. Returns the first
+    /// error encountered, if any.
+    pub fn shutdown(&self) -> Result<(), opentelemetry_sdk::error::OTelSdkError> {
+        let mut first_error = None;
+
         #[cfg(feature = "trace")]
         if let Some(tp) = &self.tracer_provider {
-            let _ = tp.shutdown();
+            if let Err(e) = tp.shutdown() {
+                first_error = Some(e);
+            }
         }
         #[cfg(feature = "logs")]
         if let Some(lp) = &self.logger_provider {
-            let _ = lp.shutdown();
+            if let Err(e) = lp.shutdown() {
+                first_error.get_or_insert(e);
+            }
+        }
+
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(()),
         }
     }
 }
@@ -66,9 +81,9 @@ impl FastlyOtel {
 ///
 /// At minimum, set a service name and at least one endpoint (log or trace).
 ///
-/// # Example
+/// # Example (with default features: `trace` + `logs`)
 ///
-/// ```no_run
+/// ```ignore
 /// use fastly_compute_otel::FastlyOtel;
 ///
 /// let otel = FastlyOtel::builder()
@@ -78,6 +93,7 @@ impl FastlyOtel {
 ///     .build()
 ///     .expect("failed to initialize OTel");
 /// ```
+#[derive(Debug)]
 pub struct FastlyOtelBuilder {
     service_name: Option<String>,
     service_version: Option<String>,
@@ -102,8 +118,8 @@ impl FastlyOtelBuilder {
     }
 
     /// Add a custom resource attribute.
-    pub fn resource_attribute(mut self, kv: KeyValue) -> Self {
-        self.resource_attributes.push(kv);
+    pub fn resource_attribute(mut self, kv: impl Into<KeyValue>) -> Self {
+        self.resource_attributes.push(kv.into());
         self
     }
 
@@ -127,16 +143,14 @@ impl FastlyOtelBuilder {
         self
     }
 
-    /// Validate the builder configuration without constructing providers.
+    /// Check that the builder has the minimum required configuration.
     ///
-    /// Returns the validated config as a `Resource` and endpoint names.
     /// This is separated from `build()` so validation logic can be tested
     /// natively without linking against the Fastly WASI runtime.
-    fn validate(&self) -> Result<ValidatedConfig, FastlyOtelError> {
-        let service_name = self
-            .service_name
-            .as_ref()
-            .ok_or(FastlyOtelError::Config("service_name is required"))?;
+    fn validate_preconditions(&self) -> Result<(), FastlyOtelError> {
+        if self.service_name.is_none() {
+            return Err(FastlyOtelError::Config("service_name is required"));
+        }
 
         // Check that at least one signal is configured.
         #[cfg(all(feature = "trace", feature = "logs"))]
@@ -154,29 +168,42 @@ impl FastlyOtelBuilder {
             ));
         }
 
-        // Build the shared resource.
-        let mut attrs = vec![KeyValue::new("service.name", service_name.clone())];
-        if let Some(version) = &self.service_version {
-            attrs.push(KeyValue::new("service.version", version.clone()));
-        }
-        attrs.extend(self.resource_attributes.clone());
-        let resource = Resource::builder_empty().with_attributes(attrs).build();
+        Ok(())
+    }
 
-        Ok(ValidatedConfig { resource })
+    /// Build the shared OTel `Resource` from owned builder fields.
+    fn build_resource(
+        service_name: String,
+        service_version: Option<String>,
+        mut resource_attributes: Vec<KeyValue>,
+    ) -> Resource {
+        let mut attrs = vec![KeyValue::new("service.name", service_name)];
+        if let Some(version) = service_version {
+            attrs.push(KeyValue::new("service.version", version));
+        }
+        attrs.append(&mut resource_attributes);
+        Resource::builder_empty().with_attributes(attrs).build()
     }
 
     /// Build the configured OTel instance.
     ///
     /// Returns an error if `service_name` is not set or no endpoints are configured.
     pub fn build(self) -> Result<FastlyOtel, FastlyOtelError> {
-        let config = self.validate()?;
+        self.validate_preconditions()?;
+
+        // Safe to unwrap: validate_preconditions checked service_name is Some.
+        let resource = Self::build_resource(
+            self.service_name.unwrap(),
+            self.service_version,
+            self.resource_attributes,
+        );
 
         // Build tracer provider if trace endpoint is configured.
         #[cfg(feature = "trace")]
         let tracer_provider = self.trace_endpoint.map(|endpoint_name| {
             opentelemetry_sdk::trace::SdkTracerProvider::builder()
                 .with_simple_exporter(crate::FastlySpanExporter::new(endpoint_name))
-                .with_resource(config.resource.clone())
+                .with_resource(resource.clone())
                 .build()
         });
 
@@ -185,7 +212,7 @@ impl FastlyOtelBuilder {
         let logger_provider = self.log_endpoint.map(|endpoint_name| {
             opentelemetry_sdk::logs::SdkLoggerProvider::builder()
                 .with_simple_exporter(crate::FastlyLogExporter::new(endpoint_name))
-                .with_resource(config.resource.clone())
+                .with_resource(resource.clone())
                 .build()
         });
 
@@ -198,69 +225,66 @@ impl FastlyOtelBuilder {
     }
 }
 
-/// Validated builder configuration, ready to construct providers.
-#[derive(Debug)]
-struct ValidatedConfig {
-    resource: Resource,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // These tests call `validate()` directly, which is pure logic that never
-    // touches Fastly FFI. They run natively without a WASI runtime.
+    // These tests call `validate_preconditions()` and `build_resource()` directly,
+    // which are pure logic that never touches Fastly FFI. They run natively
+    // without a WASI runtime.
 
+    #[cfg(feature = "logs")]
     #[test]
     fn validate_fails_without_service_name() {
         let builder = FastlyOtel::builder().log_endpoint("otel");
-        let err = builder.validate().unwrap_err();
+        let err = builder.validate_preconditions().unwrap_err();
         assert!(err.to_string().contains("service_name"));
     }
 
     #[test]
     fn validate_fails_without_any_endpoint() {
         let builder = FastlyOtel::builder().service_name("test-svc");
-        let err = builder.validate().unwrap_err();
+        let err = builder.validate_preconditions().unwrap_err();
         assert!(err.to_string().contains("endpoint"));
     }
 
+    #[cfg(feature = "logs")]
     #[test]
     fn validate_succeeds_with_log_endpoint() {
         let builder = FastlyOtel::builder()
             .service_name("test-svc")
             .log_endpoint("otel");
-        assert!(builder.validate().is_ok());
+        assert!(builder.validate_preconditions().is_ok());
     }
 
+    #[cfg(feature = "trace")]
     #[test]
     fn validate_succeeds_with_trace_endpoint() {
         let builder = FastlyOtel::builder()
             .service_name("test-svc")
             .trace_endpoint("otel");
-        assert!(builder.validate().is_ok());
+        assert!(builder.validate_preconditions().is_ok());
     }
 
+    #[cfg(all(feature = "trace", feature = "logs"))]
     #[test]
     fn validate_succeeds_with_both_endpoints() {
         let builder = FastlyOtel::builder()
             .service_name("test-svc")
             .log_endpoint("otel-logs")
             .trace_endpoint("otel-traces");
-        assert!(builder.validate().is_ok());
+        assert!(builder.validate_preconditions().is_ok());
     }
 
     #[test]
-    fn validate_includes_service_version_and_custom_attributes() {
-        let builder = FastlyOtel::builder()
-            .service_name("test-svc")
-            .service_version("1.2.3")
-            .resource_attribute(KeyValue::new("deployment.environment", "staging"))
-            .log_endpoint("otel");
-        let config = builder.validate().unwrap();
+    fn build_resource_includes_service_version_and_custom_attributes() {
+        let resource = FastlyOtelBuilder::build_resource(
+            "test-svc".to_string(),
+            Some("1.2.3".to_string()),
+            vec![KeyValue::new("deployment.environment", "staging")],
+        );
 
-        // Verify all attributes made it into the resource.
-        let attrs: Vec<_> = config.resource.iter().collect();
+        let attrs: Vec<_> = resource.iter().collect();
         assert!(attrs.iter().any(|(k, _)| k.as_str() == "service.name"));
         assert!(attrs.iter().any(|(k, _)| k.as_str() == "service.version"));
         assert!(attrs
