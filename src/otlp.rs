@@ -104,7 +104,7 @@ pub(crate) struct OtlpKeyValue {
 /// Variant names match OTLP JSON field names (serialized via serde).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, dead_code)]
 pub(crate) enum OtlpAnyValue {
     StringValue(String),
     BoolValue(bool),

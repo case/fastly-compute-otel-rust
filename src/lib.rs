@@ -24,6 +24,8 @@ mod init;
 #[cfg(feature = "logs")]
 mod logs;
 #[cfg(feature = "trace")]
+pub mod propagation;
+#[cfg(feature = "trace")]
 mod traces;
 
 #[cfg(any(feature = "logs", feature = "trace"))]
