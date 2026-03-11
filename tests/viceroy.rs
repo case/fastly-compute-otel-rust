@@ -65,11 +65,10 @@ fn build_with_shared_endpoint() {
 fn build_with_custom_resource_attributes() {
     let otel = FastlyOtel::builder()
         .service_name("integration-test")
+        .service_namespace("test-team")
         .service_version("1.2.3")
-        .resource_attribute(opentelemetry::KeyValue::new(
-            "deployment.environment",
-            "test",
-        ))
+        .deployment_environment("test")
+        .resource_attribute(opentelemetry::KeyValue::new("custom.attr", "value"))
         .endpoint("otel")
         .build()
         .expect("build with custom attributes should succeed");

@@ -375,31 +375,32 @@ impl FastlyOtelBuilder {
         Ok(())
     }
 
-    /// Build the shared OTel `Resource` from owned builder fields.
-    fn build_resource(
-        service_name: String,
-        service_namespace: Option<String>,
-        service_version: Option<String>,
-        deployment_environment: Option<String>,
-        mut resource_attributes: Vec<KeyValue>,
-    ) -> Resource {
+    /// Build the shared OTel `Resource` from the builder's current state.
+    ///
+    /// Caller must ensure `service_name` is `Some` (i.e., call after
+    /// `validate_preconditions`).
+    fn build_resource(&self) -> Resource {
+        // Safe to unwrap: validate_preconditions checked service_name is Some.
         let mut attrs = vec![
-            KeyValue::new("service.name", service_name),
+            KeyValue::new("service.name", self.service_name.clone().unwrap()),
             // Auto-set telemetry SDK attributes per the OTel resource spec.
             KeyValue::new("telemetry.sdk.name", "fastly-compute-otel"),
             KeyValue::new("telemetry.sdk.version", env!("CARGO_PKG_VERSION")),
             KeyValue::new("telemetry.sdk.language", "rust"),
         ];
-        if let Some(namespace) = service_namespace {
-            attrs.push(KeyValue::new("service.namespace", namespace));
+        if let Some(namespace) = &self.service_namespace {
+            attrs.push(KeyValue::new("service.namespace", namespace.clone()));
         }
-        if let Some(version) = service_version {
-            attrs.push(KeyValue::new("service.version", version));
+        if let Some(version) = &self.service_version {
+            attrs.push(KeyValue::new("service.version", version.clone()));
         }
-        if let Some(environment) = deployment_environment {
-            attrs.push(KeyValue::new("deployment.environment.name", environment));
+        if let Some(environment) = &self.deployment_environment {
+            attrs.push(KeyValue::new(
+                "deployment.environment.name",
+                environment.clone(),
+            ));
         }
-        attrs.append(&mut resource_attributes);
+        attrs.extend(self.resource_attributes.iter().cloned());
         Resource::builder_empty().with_attributes(attrs).build()
     }
 
@@ -410,14 +411,7 @@ impl FastlyOtelBuilder {
     pub fn build(self) -> Result<FastlyOtel, FastlyOtelError> {
         self.validate_preconditions()?;
 
-        // Safe to unwrap: validate_preconditions checked service_name is Some.
-        let resource = Self::build_resource(
-            self.service_name.unwrap(),
-            self.service_namespace,
-            self.service_version,
-            self.deployment_environment,
-            self.resource_attributes,
-        );
+        let resource = self.build_resource();
 
         // Build tracer provider if trace endpoint is configured.
         #[cfg(feature = "trace")]
@@ -582,56 +576,62 @@ mod tests {
 
     #[test]
     fn build_resource_includes_all_standard_attributes() {
-        let resource = FastlyOtelBuilder::build_resource(
-            "test-svc".to_string(),
-            Some("my-team".to_string()),
-            Some("1.2.3".to_string()),
-            Some("staging".to_string()),
-            vec![KeyValue::new("custom.attr", "value")],
-        );
+        let builder = FastlyOtel::builder()
+            .service_name("test-svc")
+            .service_namespace("my-team")
+            .service_version("1.2.3")
+            .deployment_environment("staging")
+            .resource_attribute(KeyValue::new("custom.attr", "value"));
 
+        let resource = builder.build_resource();
         let attrs: Vec<_> = resource.iter().collect();
 
+        // Helper to find attribute value by key.
+        let find = |key: &str| {
+            attrs
+                .iter()
+                .find(|(k, _)| k.as_str() == key)
+                .map(|(_, v)| v.to_string())
+        };
+
         // Required + explicit attributes
-        assert!(attrs.iter().any(|(k, _)| k.as_str() == "service.name"));
-        assert!(attrs.iter().any(|(k, _)| k.as_str() == "service.namespace"));
-        assert!(attrs.iter().any(|(k, _)| k.as_str() == "service.version"));
-        assert!(attrs
-            .iter()
-            .any(|(k, _)| k.as_str() == "deployment.environment.name"));
-        assert!(attrs.iter().any(|(k, _)| k.as_str() == "custom.attr"));
+        assert_eq!(find("service.name").as_deref(), Some("test-svc"));
+        assert_eq!(find("service.namespace").as_deref(), Some("my-team"));
+        assert_eq!(find("service.version").as_deref(), Some("1.2.3"));
+        assert_eq!(
+            find("deployment.environment.name").as_deref(),
+            Some("staging")
+        );
+        assert_eq!(find("custom.attr").as_deref(), Some("value"));
 
         // Auto-set telemetry SDK attributes
-        assert!(attrs
-            .iter()
-            .any(|(k, _)| k.as_str() == "telemetry.sdk.name"));
-        assert!(attrs
-            .iter()
-            .any(|(k, _)| k.as_str() == "telemetry.sdk.version"));
-        assert!(attrs
-            .iter()
-            .any(|(k, _)| k.as_str() == "telemetry.sdk.language"));
+        assert_eq!(
+            find("telemetry.sdk.name").as_deref(),
+            Some("fastly-compute-otel")
+        );
+        assert_eq!(
+            find("telemetry.sdk.version").as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+        assert_eq!(find("telemetry.sdk.language").as_deref(), Some("rust"));
     }
 
     #[test]
     fn build_resource_omits_optional_attributes_when_not_set() {
-        let resource =
-            FastlyOtelBuilder::build_resource("test-svc".to_string(), None, None, None, vec![]);
+        let builder = FastlyOtel::builder().service_name("test-svc");
 
+        let resource = builder.build_resource();
         let attrs: Vec<_> = resource.iter().collect();
+        let has = |key: &str| attrs.iter().any(|(k, _)| k.as_str() == key);
 
         // Always present
-        assert!(attrs.iter().any(|(k, _)| k.as_str() == "service.name"));
-        assert!(attrs
-            .iter()
-            .any(|(k, _)| k.as_str() == "telemetry.sdk.name"));
+        assert!(has("service.name"));
+        assert!(has("telemetry.sdk.name"));
 
         // Should NOT be present
-        assert!(!attrs.iter().any(|(k, _)| k.as_str() == "service.namespace"));
-        assert!(!attrs.iter().any(|(k, _)| k.as_str() == "service.version"));
-        assert!(!attrs
-            .iter()
-            .any(|(k, _)| k.as_str() == "deployment.environment.name"));
+        assert!(!has("service.namespace"));
+        assert!(!has("service.version"));
+        assert!(!has("deployment.environment.name"));
     }
 
     // Success-path tests that construct providers (build()) require WASI because

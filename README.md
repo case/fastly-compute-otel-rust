@@ -86,6 +86,7 @@ The builder provides dedicated methods for the most common [OTel resource attrib
 | `.service_namespace()`       | `service.namespace`            | No       | Groups related services (e.g., by team or product area)            |
 | `.service_version()`         | `service.version`              | No       | Version of the service (tip: use `env!("CARGO_PKG_VERSION")`)      |
 | `.deployment_environment()`  | `deployment.environment.name`  | No       | Deployment tier (e.g., `"production"`, `"staging"`)                |
+| `.resource_attribute()`      | Any custom key                 | No       | Escape hatch for any OTel resource attribute not listed above      |
 
 ### Auto-set attributes
 
