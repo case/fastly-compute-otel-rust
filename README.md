@@ -92,11 +92,12 @@ The builder provides dedicated methods for the most common [OTel resource attrib
 
 The library automatically sets these on every resource — no configuration needed:
 
-| OTel attribute             | Value                        |
-|----------------------------|------------------------------|
-| `telemetry.sdk.name`       | `"fastly-compute-otel"`      |
-| `telemetry.sdk.version`    | _(crate version, e.g. "0.0.1")_ |
-| `telemetry.sdk.language`   | `"rust"`                     |
+| OTel attribute             | Value                                           |
+|----------------------------|-------------------------------------------------|
+| `telemetry.sdk.name`       | `"fastly-compute-otel"`                         |
+| `telemetry.sdk.version`    | _(crate version, e.g. "0.0.1")_                |
+| `telemetry.sdk.language`   | `"rust"`                                        |
+| `host.name`                | _(from `FASTLY_HOSTNAME` env var, if available)_ |
 
 ### Custom attributes
 

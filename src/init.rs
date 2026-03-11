@@ -400,6 +400,12 @@ impl FastlyOtelBuilder {
                 environment.clone(),
             ));
         }
+        // Auto-detect Fastly environment attributes when running on Compute.
+        if let Ok(hostname) = std::env::var("FASTLY_HOSTNAME") {
+            if !hostname.is_empty() {
+                attrs.push(KeyValue::new("host.name", hostname));
+            }
+        }
         attrs.extend(self.resource_attributes.iter().cloned());
         Resource::builder_empty().with_attributes(attrs).build()
     }
@@ -632,6 +638,31 @@ mod tests {
         assert!(!has("service.namespace"));
         assert!(!has("service.version"));
         assert!(!has("deployment.environment.name"));
+    }
+
+    #[test]
+    fn build_resource_includes_host_name_when_env_var_set() {
+        std::env::set_var("FASTLY_HOSTNAME", "cache-lax17823-LAX");
+        let builder = FastlyOtel::builder().service_name("test-svc");
+        let resource = builder.build_resource();
+        std::env::remove_var("FASTLY_HOSTNAME");
+
+        let attrs: Vec<_> = resource.iter().collect();
+        let host = attrs
+            .iter()
+            .find(|(k, _)| k.as_str() == "host.name")
+            .map(|(_, v)| v.to_string());
+        assert_eq!(host.as_deref(), Some("cache-lax17823-LAX"));
+    }
+
+    #[test]
+    fn build_resource_omits_host_name_when_env_var_unset() {
+        std::env::remove_var("FASTLY_HOSTNAME");
+        let builder = FastlyOtel::builder().service_name("test-svc");
+        let resource = builder.build_resource();
+
+        let attrs: Vec<_> = resource.iter().collect();
+        assert!(!attrs.iter().any(|(k, _)| k.as_str() == "host.name"));
     }
 
     // Success-path tests that construct providers (build()) require WASI because
