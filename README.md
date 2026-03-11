@@ -37,6 +37,9 @@ fn main(req: Request) -> Result<Response, Error> {
     // Initialize OTel — creates root span from the incoming request.
     let otel = FastlyOtel::builder()
         .service_name("my-edge-app")
+        .service_namespace("my-team")
+        .service_version(env!("CARGO_PKG_VERSION"))
+        .deployment_environment("production")
         .endpoint("otel-endpoint")         // Fastly named log endpoint
         .build_from_request(&req)?;
 
@@ -67,6 +70,49 @@ fastly-compute-otel = { git = "...", default-features = false, features = ["trac
 
 # Logs only
 fastly-compute-otel = { git = "...", default-features = false, features = ["logs"] }
+```
+
+## Resource attributes
+
+Resource attributes describe the service producing telemetry. They're attached to every span and log record, so your observability backend can group, filter, and correlate data.
+
+### Builder methods
+
+The builder provides dedicated methods for the most common [OTel resource attributes](https://opentelemetry.io/docs/specs/semconv/resource/):
+
+| Builder method               | OTel attribute                 | Required | Description                                                        |
+|------------------------------|--------------------------------|----------|--------------------------------------------------------------------|
+| `.service_name()`            | `service.name`                 | Yes      | Logical name of the service (e.g., `"my-edge-app"`)               |
+| `.service_namespace()`       | `service.namespace`            | No       | Groups related services (e.g., by team or product area)            |
+| `.service_version()`         | `service.version`              | No       | Version of the service (tip: use `env!("CARGO_PKG_VERSION")`)      |
+| `.deployment_environment()`  | `deployment.environment.name`  | No       | Deployment tier (e.g., `"production"`, `"staging"`)                |
+
+### Auto-set attributes
+
+The library automatically sets these on every resource — no configuration needed:
+
+| OTel attribute             | Value                        |
+|----------------------------|------------------------------|
+| `telemetry.sdk.name`       | `"fastly-compute-otel"`      |
+| `telemetry.sdk.version`    | _(crate version, e.g. "0.0.1")_ |
+| `telemetry.sdk.language`   | `"rust"`                     |
+
+### Custom attributes
+
+For any attribute not covered by a builder method, use `.resource_attribute()`:
+
+```rust
+use opentelemetry::KeyValue;
+
+let otel = FastlyOtel::builder()
+    .service_name("my-edge-app")
+    .service_namespace("my-team")
+    .service_version(env!("CARGO_PKG_VERSION"))
+    .deployment_environment("production")
+    .resource_attribute(KeyValue::new("cloud.provider", "fastly"))
+    .resource_attribute(KeyValue::new("cloud.platform", "fastly_compute"))
+    .endpoint("otel-endpoint")
+    .build_from_request(&req)?;
 ```
 
 ## Fastly setup
@@ -161,6 +207,8 @@ logger.emit(record);
 ```rust
 let otel = FastlyOtel::builder()
     .service_name("my-edge-app")
+    .service_namespace("my-team")
+    .deployment_environment("production")
     .trace_endpoint("otel-endpoint")
     .build_from_request(&req)?;
 ```
@@ -170,6 +218,8 @@ let otel = FastlyOtel::builder()
 ```rust
 let otel = FastlyOtel::builder()
     .service_name("my-edge-app")
+    .service_namespace("my-team")
+    .deployment_environment("production")
     .log_endpoint("otel-endpoint")
     .build()?;
 
