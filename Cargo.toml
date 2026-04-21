@@ -16,7 +16,7 @@ logs = ["opentelemetry/logs", "opentelemetry_sdk/logs", "base64"]
 
 [dependencies]
 base64 = { version = "0.22", optional = true }
-fastly = "0.11"
+fastly = "0.12"
 opentelemetry = { version = "0.31", default-features = false }
 opentelemetry_sdk = { version = "0.31", default-features = false }
 serde = { version = "1", features = ["derive"] }
