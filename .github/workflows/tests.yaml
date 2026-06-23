@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
 
       - name: Install Rust toolchain
         run: rustup show
@@ -52,7 +52,7 @@ jobs:
             features: "--no-default-features --features logs"
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.3
 
       - name: Install Rust toolchain
         run: rustup show
